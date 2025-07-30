@@ -1,0 +1,453 @@
+🏗️ Архитектура Проекта "Город"
+
+## Обзор Системы
+
+"Город" - это современная социальная платформа, построенная на принципах микросервисной архитектуры с акцентом на производительность, масштабируемость и пользовательский опыт.
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Frontend      │    │    Backend      │    │   Database      │
+│   (Next.js)     │◄──►│   (FastAPI)     │◄──►│  (PostgreSQL)   │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │
+         │                       │                       │
+         ▼                       ▼                       ▼
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   CDN/Images    │    │   Cache Layer   │    │   File Storage  │
+│   (Vercel)      │    │   (Redis)       │    │   (Local/S3)    │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+```
+
+## Frontend Архитектура
+
+### Структура (Atomic Design)
+
+```
+frontend/
+├── app/                          # Next.js 15 App Router
+│   ├── layout.tsx               # Корневой layout
+│   ├── page.tsx                 # Главная страница
+│   ├── map/                     # Страница карты
+│   ├── vibes/                   # Страница настроений
+│   └── globals.css              # Глобальные стили
+├── components/                   # Atomic Design компоненты
+│   ├── atoms/                   # Атомы (базовые элементы)
+│   │   ├── Button.tsx
+│   │   ├── Input.tsx
+│   │   ├── Avatar.tsx
+│   │   └── MeoFusciuniImage.tsx
+│   ├── molecules/               # Молекулы (составные элементы)
+│   │   ├── PostCard.tsx
+│   │   ├── DistrictCard.tsx
+│   │   └── Navigation.tsx
+│   └── organisms/               # Организмы (сложные блоки)
+│       ├── CityMap.tsx
+│       ├── LiveCommunityFeed.tsx
+│       └── FreePhotoGallery.tsx
+├── hooks/                       # Кастомные React хуки
+│   ├── useIsMobile.ts
+│   ├── useInfinitePosts.ts
+│   └── useSidebar.ts
+├── utils/                       # Утилиты и хелперы
+│   ├── photoSources.ts
+│   ├── imageProcessor.ts
+│   └── lookbookUtils.ts
+├── data/                        # Типы и мок данные
+│   ├── types.ts
+│   └── districtData.ts
+└── styles/                      # Стили и темы
+    └── globals.css
+```
+
+### Ключевые Принципы
+
+#### 1. Atomic Design
+- **Атомы**: Базовые UI элементы (кнопки, инпуты, аватары)
+- **Молекулы**: Составные элементы (карточки постов, навигация)
+- **Организмы**: Сложные блоки (карта города, лента контента)
+- **Шаблоны**: Макеты страниц
+- **Страницы**: Конкретные экземпляры шаблонов
+
+#### 2. Performance First
+```typescript
+// Lazy loading компонентов
+const HeavyComponent = dynamic(() => import('./HeavyComponent'), {
+  loading: () => <LoadingSpinner />,
+  ssr: false
+});
+
+// Мемоизация
+const MemoizedComponent = React.memo(ExpensiveComponent);
+
+// Оптимизация изображений
+<Image
+  src="/photos/photo.jpg"
+  alt="Description"
+  width={800}
+  height={600}
+  priority
+  placeholder="blur"
+/>
+```
+
+#### 3. TypeScript First
+```typescript
+interface PhotoSource {
+  id: string;
+  src: string;
+  title: string;
+  author: string;
+  district: string;
+  likes: number;
+  source: 'instagram' | 'telegram';
+  tags: string[];
+}
+
+interface DistrictStats {
+  name: string;
+  posts: number;
+  likes: number;
+  images: number;
+  coordinates: {
+    lat: number;
+    lng: number;
+  };
+}
+```
+
+## Backend Архитектура
+
+### Структура (Clean Architecture)
+
+```
+backend/
+├── app.py                       # Основное приложение FastAPI
+├── database.py                  # Настройки базы данных
+├── models.py                    # SQLAlchemy модели
+├── routes/                      # API маршруты
+│   ├── auth.py                 # Аутентификация
+│   ├── posts.py                # Посты и контент
+│   └── districts.py            # Данные районов
+├── schemas/                     # Pydantic схемы
+│   ├── user.py                 # Схемы пользователей
+│   └── post.py                 # Схемы постов
+├── services/                    # Бизнес-логика
+│   ├── auth_service.py         # Сервис аутентификации
+│   ├── post_service.py         # Сервис постов
+│   └── image_service.py        # Сервис обработки изображений
+├── utils/                       # Утилиты
+│   ├── security.py             # Безопасность
+│   └── validators.py           # Валидаторы
+└── requirements.txt             # Зависимости Python
+```
+
+### Ключевые Принципы
+
+#### 1. RESTful API Design
+```python
+# Маршруты API
+@app.get("/api/posts")
+async def get_posts(skip: int = 0, limit: int = 10):
+    return await post_service.get_posts(skip, limit)
+
+@app.post("/api/posts")
+async def create_post(post: PostCreate, current_user: User = Depends(get_current_user)):
+    return await post_service.create_post(post, current_user)
+
+@app.get("/api/districts/{district_id}")
+async def get_district(district_id: int):
+    return await district_service.get_district(district_id)
+```
+
+#### 2. Dependency Injection
+```python
+# Зависимости
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+    return auth_service.get_current_user(db, token)
+```
+
+#### 3. Async/Await Pattern
+```python
+# Асинхронная обработка
+async def process_image_upload(file: UploadFile):
+    # Асинхронная обработка изображения
+    processed_image = await image_service.process(file)
+    return processed_image
+```
+
+## База Данных
+
+### Схема (PostgreSQL)
+
+```sql
+-- Пользователи
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    avatar_url VARCHAR(255),
+    district_id INTEGER REFERENCES districts(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Районы
+CREATE TABLE districts (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    coordinates POINT NOT NULL,
+    boundary_polygon POLYGON,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Посты
+CREATE TABLE posts (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id),
+    district_id INTEGER REFERENCES districts(id),
+    content_type VARCHAR(20) NOT NULL, -- 'text', 'image', 'video', 'audio'
+    content TEXT,
+    media_url VARCHAR(255),
+    likes_count INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Лайки
+CREATE TABLE likes (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id),
+    post_id INTEGER REFERENCES posts(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, post_id)
+);
+
+-- Теги
+CREATE TABLE tags (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(50) UNIQUE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Связь постов и тегов
+CREATE TABLE post_tags (
+    post_id INTEGER REFERENCES posts(id),
+    tag_id INTEGER REFERENCES tags(id),
+    PRIMARY KEY (post_id, tag_id)
+);
+```
+
+### Индексы для Производительности
+
+```sql
+-- Индексы для быстрого поиска
+CREATE INDEX idx_posts_district_id ON posts(district_id);
+CREATE INDEX idx_posts_created_at ON posts(created_at DESC);
+CREATE INDEX idx_posts_user_id ON posts(user_id);
+CREATE INDEX idx_likes_post_id ON likes(post_id);
+CREATE INDEX idx_users_district_id ON users(district_id);
+
+-- Полнотекстовый поиск
+CREATE INDEX idx_posts_content_fts ON posts USING gin(to_tsvector('russian', content));
+```
+
+## Интеграции
+
+### 2GIS API
+```python
+# Интеграция с 2GIS для данных о местах
+class TwoGISService:
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+        self.base_url = "https://catalog.api.2gis.com/3.0"
+    
+    async def get_places(self, query: str, region_id: int = 1):
+        params = {
+            "q": query,
+            "region_id": region_id,
+            "key": self.api_key,
+            "fields": "items.point,items.name,items.address"
+        }
+        response = await httpx.get(f"{self.base_url}/items", params=params)
+        return response.json()
+```
+
+### OpenStreetMap
+```python
+# Интеграция с OpenStreetMap для геоданных
+class OSMService:
+    async def get_district_boundaries(self, district_name: str):
+        query = f"""
+        [out:json][timeout:25];
+        area["name"="{district_name}"]["admin_level"="10"]->.searchArea;
+        (
+          way["boundary"="administrative"](area.searchArea);
+        );
+        out body;
+        >;
+        out skel qt;
+        """
+        response = await httpx.get("https://overpass-api.de/api/interpreter", params={"data": query})
+        return response.json()
+```
+
+## Кэширование
+
+### Redis Cache Layer
+```python
+# Кэширование часто запрашиваемых данных
+class CacheService:
+    def __init__(self, redis_url: str):
+        self.redis = redis.from_url(redis_url)
+    
+    async def get_cached_posts(self, district_id: int, limit: int = 10):
+        cache_key = f"posts:district:{district_id}:limit:{limit}"
+        cached_data = await self.redis.get(cache_key)
+        
+        if cached_data:
+            return json.loads(cached_data)
+        
+        # Получаем данные из БД
+        posts = await post_service.get_posts_by_district(district_id, limit)
+        
+        # Кэшируем на 5 минут
+        await self.redis.setex(cache_key, 300, json.dumps(posts))
+        return posts
+```
+
+## Безопасность
+
+### Аутентификация и Авторизация
+```python
+# JWT токены
+class AuthService:
+    def create_access_token(self, data: dict):
+        to_encode = data.copy()
+        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        to_encode.update({"exp": expire})
+        encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+        return encoded_jwt
+    
+    def verify_token(self, token: str):
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            return payload
+        except JWTError:
+            raise HTTPException(status_code=401, detail="Invalid token")
+```
+
+### Rate Limiting
+```python
+# Ограничение запросов
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
+
+@app.post("/api/posts")
+@limiter.limit("5/minute")  # 5 постов в минуту
+async def create_post(request: Request, post: PostCreate):
+    # Логика создания поста
+    pass
+```
+
+## Мониторинг и Логирование
+
+### Структурированное Логирование
+```python
+import structlog
+
+logger = structlog.get_logger()
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    process_time = time.time() - start_time
+    
+    logger.info(
+        "request_processed",
+        method=request.method,
+        url=str(request.url),
+        status_code=response.status_code,
+        process_time=process_time
+    )
+    
+    return response
+```
+
+### Метрики Prometheus
+```python
+from prometheus_client import Counter, Histogram
+
+request_count = Counter('http_requests_total', 'Total HTTP requests', ['method', 'endpoint'])
+request_latency = Histogram('http_request_duration_seconds', 'HTTP request latency')
+
+@app.middleware("http")
+async def add_metrics(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    request_count.labels(method=request.method, endpoint=request.url.path).inc()
+    request_latency.observe(time.time() - start_time)
+    return response
+```
+
+## Масштабирование
+
+### Горизонтальное Масштабирование
+- **Load Balancer**: Nginx для распределения нагрузки
+- **Multiple Instances**: Несколько экземпляров backend
+- **Database Sharding**: Разделение БД по районам
+- **CDN**: Vercel Edge Network для статических файлов
+
+### Вертикальное Масштабирование
+- **Database Optimization**: Индексы, запросы, кэширование
+- **Image Processing**: Оптимизация изображений
+- **Code Splitting**: Разделение кода на чанки
+- **Lazy Loading**: Отложенная загрузка компонентов
+
+## DevOps Pipeline
+
+### CI/CD (GitHub Actions)
+```yaml
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Run tests
+        run: |
+          cd frontend && npm test
+          cd ../backend && pytest
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to Vercel
+        run: vercel --prod
+      - name: Deploy to Railway
+        run: railway up
+```
+
+Эта архитектура обеспечивает:
+- ✅ Высокую производительность
+- ✅ Масштабируемость
+- ✅ Безопасность
+- ✅ Поддерживаемость
+- ✅ Тестируемость 
